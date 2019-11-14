@@ -1,0 +1,168 @@
+﻿@model practice.Models.AuctionViewModel
+
+
+@{
+    ViewBag.Title = "Details";
+}
+
+<h2>Details</h2>
+
+<div>
+    <h2>Auction</h2>
+    <h4>AuctionViewModel</h4>
+    
+    <hr />
+    <div class="input-group">
+        <span class="input-group-addon"><i class="glyphicon glyphicon-user"></i></span>
+        <input id="user" type="text" class="form-control col-md-6" name="user" placeholder="@ViewBag.username" />
+    </div>
+    <div class="input-group">
+        <table class="table table-responsive table-striped">
+            <thead>
+                <tr>
+                    <th>@Html.DisplayNameFor(model => model.ImagePath)</th>
+                    <th>@Html.DisplayNameFor(model => model.ProductName)</th>
+                    <th>@Html.DisplayNameFor(model => model.ProductInfo)</th>
+                    <th>@Html.DisplayNameFor(model => model.ProductPrice)</th>
+                    <th>@Html.DisplayNameFor(model => model.BidPrice)</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><img src="@Url.Content(Model.ImagePath)" width="250" height="250" multiple /></td>
+                    <td>@Html.DisplayFor(model => model.ProductName)</td>
+                    <td>@Html.DisplayFor(model => model.ProductInfo)</td>
+                    <td>@Html.DisplayFor(model => model.ProductPrice)</td>
+                    <td>
+                        <div class="input-group">
+                            <span class="input-group-addon"><i class="glyphicon glyphicon-usd"></i></span>
+                            <input id="price" type="text" class="form-control col-md-6" readonly value=" @Html.DisplayFor(model => model.BidPrice)" />
+                        </div>
+                    </td>
+                    <td>
+                        <div class="input-group">
+                            <input type="button" class="btn btn-success" id="bid" value="Make a Bid" />
+                            <div id="total-bids">
+                                <label class="control-label">Total Bids:</label>
+                                <span> <!-- Total number of bids is updated here --></span>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>    
+       
+           
+       
+        
+           
+            <!-- Count-down timer -->
+            <div class="input-group">
+                <span class="input-group-addon"><i class="glyphicon glyphicon-time"></i></span>
+                <input id="remaining-time" type="text" class="form-control col-md-6" readonly />
+            </div>
+
+            <!-- client bids information (user - value - time)-->
+            <div class="form-group">
+                <label for="recent-bids">Recent Bids:</label>
+                <div id="recent-bids">
+                    <ul class="list-group">
+                        <!-- Notifications of new bids goes here-->
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Server push information currently for bid is over and who is the winner-->
+            <div class="form-group">
+                <label for="messages">Activity:</label>
+                <textarea class="form-control" rows="5" id="messages"></textarea>
+            </div>
+        </dd>
+    </dl>
+</div>
+<p>
+    @Html.ActionLink("Edit", "Edit", new { id = Model.ProductId }) |
+    @Html.ActionLink("Back to List", "Index")
+</p>
+
+
+
+@section scripts
+{
+    <script src="~/Scripts/jquery.signalR-2.4.1.js"></script>
+    <script src="~/signalr/hubs"></script>
+    <script src="~/Scripts/util/util-timer.js"></script>
+    <script type="text/javascript">
+        var biddingActive = true;
+        $(function () {
+
+            //timer is a javascript 'class' resides in util-timer.js
+            var utilTimer = timer()
+
+            //get reference to SignalR hub
+            var auction = $.connection.Auction;
+
+            //Get information from server when bid is over and the which client has won
+            auction.client.addMessage = function (message) {
+                var txtArea = $('#messages');
+                txtArea.val(txtArea.val() + "\n" + message);
+            };
+
+            //This is called each time a client make a bid it prints (user - value - time)
+            auction.client.notifyNewBid = function (notification) {
+                $('#recent-bids ul').prepend('<li class="list-group-item">' + notification + '</li>');
+            };
+
+            //This is the initial method to be called by every client to initialize bid information
+            auction.client.auctionRefresh = function (model) {
+                $('#price').val(model.ValueNextBid);
+                $('#total-bids span').text(model.BidsTotal);
+
+                $('#remaining-time').val(utilTimer.getRemainingTime(new Date(model.EndTimeFullText)));
+
+                utilTimer.initializeDecrementTimeRemaining();
+            }
+
+            //This is called by a timer thread in the hub to update the remaining time
+            auction.client.updateRemainingTime = function (remainingTime) {
+                $('#remaining-time').val(remainingTime);
+            }
+
+            //This called when reamining time reaches 0, to prevent new biddings
+            auction.client.finishBidding = function () {
+                biddingActive = false;
+            }
+
+            //The interaction of client with hub server
+            $('#bid').click(function () {
+                if (!biddingActive) {
+                    alert("Auction has ended!");
+                    return;
+                }
+
+                if (!validBid()) {
+                    alert("Please Insert your name!");
+                    $('#user').focus();
+                    return;
+                }
+
+                auction.server.placeBid($('#price').val(), $('#user').val());
+                //auction.server.updatePrice($('#productName').val(), $('#price').val());
+            });
+
+            //Start wiring the client with the hub
+            $.connection.hub.start().done(function () {
+                auction.server.callRefresh();
+            });
+        });
+
+        function validBid() {
+            var value = $('#price').val(),
+                user = $('#user').val();
+
+            return value !== '' && user !== '';
+        }
+    </script>
+}
